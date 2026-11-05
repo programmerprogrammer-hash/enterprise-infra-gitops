@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: enterprise-app-service
+  namespace: production
+  labels:
+    app: enterprise-app
+spec:
+  type: ClusterIP # Sichere interne IP-Adresse, geschützt vor dem öffentlichen Internet
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: enterprise-app

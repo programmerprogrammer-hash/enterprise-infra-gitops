@@ -1,0 +1,85 @@
+---
+- name: OS Hardening and Containerd Setup
+  hosts: k8s_nodes
+  become: yes
+  tasks:
+    - name: Load required kernel modules for Kubernetes
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Persist kernel modules on reboot
+      copy:
+        dest: /etc/modules-load.d/k8s.conf
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Configure sysctl params for Kubernetes networking
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { name: 'net.ipv4.ip_forward', value: '1' }
+
+    - name: Install containerd and runtime dependencies
+      apt:
+        name:
+          - containerd
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - ufw
+        state: present
+        update_cache: yes
+
+    - name: Create containerd configuration directory
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Generate default containerd config & enable SystemdCgroup
+      shell: containerd config default > /etc/containerd/config.toml
+
+    - name: Configure containerd to use SystemdCgroup (Kubernetes requirement)
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+      notify: Restart containerd
+
+    - name: Secure SSH - Disallow Root Login
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^PermitRootLogin'
+        line: 'PermitRootLogin no'
+        state: present
+      notify: Restart sshd
+
+    - name: Firewall Control - Allow Kubernetes API
+      ufw:
+        rule: allow
+        port: '6443'
+        proto: tcp
+
+    - name: Enable UFW Firewall
+      ufw:
+        state: enabled
+
+  handlers:
+    - name: Restart containerd
+      service:
+        name: containerd
+        state: restarted
+
+    - name: Restart sshd
+      service:
+        name: sshd
+        state: restarted

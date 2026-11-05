@@ -1,0 +1,22 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: enterprise-app-autoscaler
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: enterprise-app
+  minReplicaCount: 2
+  maxReplicaCount: 15
+  cooldownPeriod: 300
+  pollingInterval: 15
+  triggers:
+  - type: prometheus
+    metadata:
+      serverAddress: http://cluster.local
+      metricName: http_requests_total
+      # Skaliert die Pods dynamisch hoch, wenn die API unter Last steht (> 50 Requests/Sekunde)
+      query: sum(rate(http_requests_total{job="enterprise-app-service"}[2m]))
+      threshold: '50'
